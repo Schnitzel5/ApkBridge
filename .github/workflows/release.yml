@@ -37,9 +37,15 @@ jobs:
             cd app/build/outputs/apk/release
             mv app-release-unsigned.apk ApkBridge-${{ github.ref_name }}.apk
             cd -
-
-      # Noted For Output [main_project_module]/build/outputs/apk/release/
-      - name: Upload APK Release - ${{ env.repository_name }}
+            
+      - name: upload artifact android apks
         uses: actions/upload-artifact@v4
         with:
-          path: app/build/outputs/apk/release/
+          name: ApkBridge-${{ github.ref_name }}
+          path: "app/build/outputs/apk/release/ApkBridge-*.apk"
+
+      - name: release packages android apks
+        uses: ncipollo/release-action@v1
+        with:
+          artifacts: "app/build/outputs/apk/release/ApkBridge-*.apk"
+          allowUpdates: true
