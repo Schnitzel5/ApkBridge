@@ -73,7 +73,7 @@ public class DalvikHandler extends RouterNanoHTTPD.GeneralHandler {
                 return newFixedLengthResponse(NanoHTTPD.Response.Status.INTERNAL_ERROR, MIME_PLAINTEXT, "");
             }
         }
-        return newFixedLengthResponse(NanoHTTPD.Response.Status.NOT_FOUND, MIME_PLAINTEXT, "The requested resource does not exist");
+        return newFixedLengthResponse(NanoHTTPD.Response.Status.NOT_FOUND, MIME_PLAINTEXT, "");
     }
 
     protected NanoHTTPD.Response resolve(DexClassLoader classLoader, File file, DataBody data, ObjectMapper mapper) throws InterruptedException {
@@ -87,18 +87,18 @@ public class DalvikHandler extends RouterNanoHTTPD.GeneralHandler {
             case "getSearchManga":
                 return buildResponse(invokeMangaSource(classLoader, file, (catalogueSource, continuation) -> catalogueSource.getSearchManga(data.page, data.search, new FilterList(), continuation)), mapper);
             case "getDetailsManga":
-                if (data.mangaData.isPresent()) {
-                    return buildResponse(invokeMangaSource(classLoader, file, (catalogueSource, continuation) -> catalogueSource.getMangaDetails(data.mangaData.get(), continuation)), mapper);
+                if (data.mangaData != null) {
+                    return buildResponse(invokeMangaSource(classLoader, file, (catalogueSource, continuation) -> catalogueSource.getMangaDetails(data.mangaData, continuation)), mapper);
                 }
                 break;
             case "getChapterList":
-                if (data.mangaData.isPresent()) {
-                    return buildResponse(invokeMangaSource(classLoader, file, (catalogueSource, continuation) -> catalogueSource.getChapterList(data.mangaData.get(), continuation)), mapper);
+                if (data.mangaData != null) {
+                    return buildResponse(invokeMangaSource(classLoader, file, (catalogueSource, continuation) -> catalogueSource.getChapterList(data.mangaData, continuation)), mapper);
                 }
                 break;
             case "getPageList":
-                if (data.chapterData.isPresent()) {
-                    return buildResponse(invokeMangaSource(classLoader, file, (catalogueSource, continuation) -> catalogueSource.getPageList(data.chapterData.get(), continuation)), mapper);
+                if (data.chapterData != null) {
+                    return buildResponse(invokeMangaSource(classLoader, file, (catalogueSource, continuation) -> catalogueSource.getPageList(data.chapterData, continuation)), mapper);
                 }
                 break;
             case "supportLatestAnime":
@@ -110,18 +110,18 @@ public class DalvikHandler extends RouterNanoHTTPD.GeneralHandler {
             case "getSearchAnime":
                 return buildResponse(invokeAnimeSource(classLoader, file, (animeCatalogueSource, continuation) -> animeCatalogueSource.getSearchAnime(data.page, data.search, new AnimeFilterList(), continuation)), mapper);
             case "getDetailsAnime":
-                if (data.animeData.isPresent()) {
-                    return buildResponse(invokeAnimeSource(classLoader, file, (animeCatalogueSource, continuation) -> animeCatalogueSource.getAnimeDetails(data.animeData.get(), continuation)), mapper);
+                if (data.animeData != null) {
+                    return buildResponse(invokeAnimeSource(classLoader, file, (animeCatalogueSource, continuation) -> animeCatalogueSource.getAnimeDetails(data.animeData, continuation)), mapper);
                 }
                 break;
             case "getEpisodeList":
-                if (data.animeData.isPresent()) {
-                    return buildResponse(invokeAnimeSource(classLoader, file, (animeCatalogueSource, continuation) -> animeCatalogueSource.getEpisodeList(data.animeData.get(), continuation)), mapper);
+                if (data.animeData != null) {
+                    return buildResponse(invokeAnimeSource(classLoader, file, (animeCatalogueSource, continuation) -> animeCatalogueSource.getEpisodeList(data.animeData, continuation)), mapper);
                 }
                 break;
             case "getVideoList":
-                if (data.episodeData.isPresent()) {
-                    return buildResponse(invokeAnimeSource(classLoader, file, (animeCatalogueSource, continuation) -> animeCatalogueSource.getVideoList(data.episodeData.get(), continuation)), mapper);
+                if (data.episodeData != null) {
+                    return buildResponse(invokeAnimeSource(classLoader, file, (animeCatalogueSource, continuation) -> animeCatalogueSource.getVideoList(data.episodeData, continuation)), mapper);
                 }
                 break;
         }

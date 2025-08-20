@@ -1,12 +1,10 @@
 package me.schnitzel.apkbridge
 
 import android.content.Context
-import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.ConnectivityManager
 import android.net.Network
 import android.os.Bundle
-import android.provider.Settings
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -60,9 +58,6 @@ class MainActivity : ComponentActivity() {
         val connectivityManager =
             applicationContext.getSystemService(ConnectivityManager::class.java)
         connectivityManager.registerDefaultNetworkCallback(networkCallback)
-
-        val intent = Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
-        startActivity(intent)
 
         webServer = WebServer()
         pm = packageManager

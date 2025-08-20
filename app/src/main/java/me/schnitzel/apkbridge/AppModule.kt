@@ -1,5 +1,6 @@
 package me.schnitzel.apkbridge
 
+import android.app.Application
 import android.content.Context
 import androidx.core.content.ContextCompat
 import eu.kanade.tachiyomi.network.NetworkHelper
@@ -10,9 +11,10 @@ import uy.kohesive.injekt.api.addSingleton
 import uy.kohesive.injekt.api.addSingletonFactory
 import uy.kohesive.injekt.api.get
 
-class AppModule(private val app: Context) : InjektModule {
+class AppModule(private val ctx: Context) : InjektModule {
 
     override fun InjektRegistrar.registerInjectables() {
+        val app = ctx.applicationContext as Application
         addSingleton(app)
 
         addSingletonFactory {
@@ -22,7 +24,7 @@ class AppModule(private val app: Context) : InjektModule {
             }
         }
 
-        addSingletonFactory { NetworkHelper(app) }
+        addSingletonFactory { NetworkHelper(ctx) }
 
         // Asynchronously init expensive components for a faster cold start
         ContextCompat.getMainExecutor(app).execute {
