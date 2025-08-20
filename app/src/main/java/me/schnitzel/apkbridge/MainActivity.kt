@@ -24,6 +24,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.unit.dp
 import me.schnitzel.apkbridge.ui.theme.ApkBridgeTheme
 import me.schnitzel.apkbridge.web.WebServer
@@ -105,6 +106,7 @@ fun Greeting(name: String, modifier: Modifier = Modifier) {
 
 @Composable
 fun ServerContent(context: Context, webServer: WebServer, addressText: String) {
+    val uriHandler = LocalUriHandler.current
     var status by rememberSaveable { mutableStateOf("Stopped") }
     var addressButton by rememberSaveable { mutableStateOf("Show Server IP") }
     Column(modifier = Modifier.padding(16.dp)) {
@@ -150,5 +152,11 @@ fun ServerContent(context: Context, webServer: WebServer, addressText: String) {
                     if (addressButton == "Show Server IP") "Hide Server IP" else "Show Server IP"
             },
         ) { Text(addressButton) }
+        Button(
+            onClick = {
+                uriHandler.openUri("https://github.com/Schnitzel5/ApkBridge")
+            },
+            modifier = Modifier.padding(top = 40.dp),
+        ) { Text("GitHub repository") }
     }
 }

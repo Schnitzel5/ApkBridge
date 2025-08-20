@@ -24,10 +24,12 @@ import eu.kanade.tachiyomi.animesource.AnimeCatalogueSource;
 import eu.kanade.tachiyomi.animesource.AnimeSource;
 import eu.kanade.tachiyomi.animesource.AnimeSourceFactory;
 import eu.kanade.tachiyomi.animesource.model.AnimeFilterList;
+import eu.kanade.tachiyomi.animesource.online.AnimeHttpSource;
 import eu.kanade.tachiyomi.source.CatalogueSource;
 import eu.kanade.tachiyomi.source.MangaSource;
 import eu.kanade.tachiyomi.source.SourceFactory;
 import eu.kanade.tachiyomi.source.model.FilterList;
+import eu.kanade.tachiyomi.source.online.HttpSource;
 import fi.iki.elonen.NanoHTTPD;
 import fi.iki.elonen.router.RouterNanoHTTPD;
 import kotlin.coroutines.Continuation;
@@ -78,6 +80,15 @@ public class DalvikHandler extends RouterNanoHTTPD.GeneralHandler {
 
     protected NanoHTTPD.Response resolve(DexClassLoader classLoader, File file, DataBody data, ObjectMapper mapper) throws InterruptedException {
         switch (data.method) {
+            case "headersManga":
+                return buildResponse(invokeMangaSource(classLoader, file, (catalogueSource, continuation) -> {
+                    if (catalogueSource instanceof HttpSource) {
+                        return ((HttpSource) catalogueSource).getHeaders().getNamesAndValues$okhttp();
+                    }
+                    return List.of();
+                }), mapper);
+            case "filtersManga":
+                return buildResponse(invokeMangaSource(classLoader, file, (catalogueSource, continuation) -> catalogueSource.getFilterList()), mapper);
             case "supportLatestManga":
                 return buildResponse(invokeMangaSource(classLoader, file, (catalogueSource, continuation) -> catalogueSource.getSupportsLatest()), mapper);
             case "getPopularManga":
@@ -101,6 +112,15 @@ public class DalvikHandler extends RouterNanoHTTPD.GeneralHandler {
                     return buildResponse(invokeMangaSource(classLoader, file, (catalogueSource, continuation) -> catalogueSource.getPageList(data.chapterData, continuation)), mapper);
                 }
                 break;
+            case "headersAnime":
+                return buildResponse(invokeAnimeSource(classLoader, file, (animeCatalogueSource, continuation) -> {
+                    if (animeCatalogueSource instanceof AnimeHttpSource) {
+                        return ((AnimeHttpSource) animeCatalogueSource).getHeaders().getNamesAndValues$okhttp();
+                    }
+                    return List.of();
+                }), mapper);
+            case "filtersAnime":
+                return buildResponse(invokeAnimeSource(classLoader, file, (animeCatalogueSource, continuation) -> animeCatalogueSource.getFilterList()), mapper);
             case "supportLatestAnime":
                 return buildResponse(invokeAnimeSource(classLoader, file, (animeCatalogueSource, continuation) -> animeCatalogueSource.getSupportsLatest()), mapper);
             case "getPopularAnime":

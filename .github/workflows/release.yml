@@ -33,7 +33,7 @@ jobs:
       # Create APK Release
       - name: Build apk release project
         run: |
-            ./gradlew assemble
+            ./gradlew assembleRelease
             cd app/build/outputs/apk/release
             mv app-release-unsigned.apk ApkBridge-${{ github.ref_name }}.apk
             cd -
