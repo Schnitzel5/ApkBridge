@@ -4,9 +4,9 @@ import eu.kanade.tachiyomi.source.model.UpdateStrategy
 
 class SAnimeImpl : SAnime {
 
-    override lateinit var url: String
+    override var url: String = ""
 
-    override lateinit var title: String
+    override var title: String = ""
 
     override var artist: String? = null
 

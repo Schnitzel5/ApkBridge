@@ -155,7 +155,8 @@ public class DalvikHandler extends RouterNanoHTTPD.GeneralHandler {
             try {
                 return newFixedLengthResponse(NanoHTTPD.Response.Status.OK, "application/json", mapper.writeValueAsString(obj));
             } catch (IOException e) {
-                throw new RuntimeException(e);
+                System.err.println(e.getMessage());
+                return newFixedLengthResponse(NanoHTTPD.Response.Status.INTERNAL_ERROR, MIME_PLAINTEXT, "");
             }
         }).orElse(newFixedLengthResponse(NanoHTTPD.Response.Status.BAD_REQUEST, MIME_PLAINTEXT, ""));
     }
