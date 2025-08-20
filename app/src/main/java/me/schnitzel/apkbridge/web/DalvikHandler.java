@@ -96,7 +96,8 @@ public class DalvikHandler extends RouterNanoHTTPD.GeneralHandler {
             case "getLatestManga":
                 return buildResponse(invokeMangaSource(classLoader, file, (catalogueSource, continuation) -> catalogueSource.getLatestUpdates(data.page, continuation)), mapper);
             case "getSearchManga":
-                return buildResponse(invokeMangaSource(classLoader, file, (catalogueSource, continuation) -> catalogueSource.getSearchManga(data.page, data.search, new FilterList(), continuation)), mapper);
+                FilterList filterList = data.filterListManga != null ? data.filterListManga : new FilterList();
+                return buildResponse(invokeMangaSource(classLoader, file, (catalogueSource, continuation) -> catalogueSource.getSearchManga(data.page, data.search, filterList, continuation)), mapper);
             case "getDetailsManga":
                 if (data.mangaData != null) {
                     return buildResponse(invokeMangaSource(classLoader, file, (catalogueSource, continuation) -> catalogueSource.getMangaDetails(data.mangaData, continuation)), mapper);
@@ -128,7 +129,8 @@ public class DalvikHandler extends RouterNanoHTTPD.GeneralHandler {
             case "getLatestAnime":
                 return buildResponse(invokeAnimeSource(classLoader, file, (animeCatalogueSource, continuation) -> animeCatalogueSource.getLatestUpdates(data.page, continuation)), mapper);
             case "getSearchAnime":
-                return buildResponse(invokeAnimeSource(classLoader, file, (animeCatalogueSource, continuation) -> animeCatalogueSource.getSearchAnime(data.page, data.search, new AnimeFilterList(), continuation)), mapper);
+                AnimeFilterList animeFilterList = data.filterListAnime != null ? data.filterListAnime : new AnimeFilterList();
+                return buildResponse(invokeAnimeSource(classLoader, file, (animeCatalogueSource, continuation) -> animeCatalogueSource.getSearchAnime(data.page, data.search, animeFilterList, continuation)), mapper);
             case "getDetailsAnime":
                 if (data.animeData != null) {
                     return buildResponse(invokeAnimeSource(classLoader, file, (animeCatalogueSource, continuation) -> animeCatalogueSource.getAnimeDetails(data.animeData, continuation)), mapper);

@@ -1,6 +1,6 @@
 package eu.kanade.tachiyomi.source.model
 
-sealed class Filter<T>(val name: String, var state: T) {
+open class Filter<T>(val name: String, var state: T) {
     open class Header(name: String) : Filter<Any>(name, 0)
     open class Separator(name: String = "") : Filter<Any>(name, 0)
     abstract class Select<V>(name: String, val values: Array<V>, state: Int = 0) :

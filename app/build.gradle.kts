@@ -72,6 +72,7 @@ dependencies {
     implementation(libs.rxandroid)
     implementation(libs.injekt)
     implementation(libs.jackson)
+    implementation(libs.jackson.kotlin)
     implementation(libs.androidx.core.ktx)
     implementation(libs.preference.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)

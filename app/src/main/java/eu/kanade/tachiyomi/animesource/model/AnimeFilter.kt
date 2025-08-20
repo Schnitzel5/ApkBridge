@@ -1,6 +1,6 @@
 package eu.kanade.tachiyomi.animesource.model
 
-sealed class AnimeFilter<T>(val name: String, var state: T) {
+open class AnimeFilter<T>(val name: String, var state: T) {
     open class Header(name: String) : AnimeFilter<Any>(name, 0)
     open class Separator(name: String = "") : AnimeFilter<Any>(name, 0)
     abstract class Select<V>(name: String, val values: Array<V>, state: Int = 0) :
