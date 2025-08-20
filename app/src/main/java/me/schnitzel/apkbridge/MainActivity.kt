@@ -1,6 +1,9 @@
 package me.schnitzel.apkbridge
 
+import android.app.NotificationChannel
+import android.app.NotificationManager
 import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.ConnectivityManager
 import android.net.Network
@@ -27,15 +30,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.unit.dp
 import me.schnitzel.apkbridge.ui.theme.ApkBridgeTheme
-import me.schnitzel.apkbridge.web.WebServer
+import me.schnitzel.apkbridge.web.service.WebService
 import uy.kohesive.injekt.Injekt
-
 
 @JvmField
 var pm: PackageManager? = null
 
 class MainActivity : ComponentActivity() {
-    private lateinit var webServer: WebServer
     private var addressText by mutableStateOf("No info")
     private var networkCallback = object : ConnectivityManager.NetworkCallback() {
         override fun onAvailable(network: Network) {
@@ -60,7 +61,15 @@ class MainActivity : ComponentActivity() {
             applicationContext.getSystemService(ConnectivityManager::class.java)
         connectivityManager.registerDefaultNetworkCallback(networkCallback)
 
-        webServer = WebServer()
+        val channel = NotificationChannel(
+            "ApkBridgeServiceChannelId",
+            "ApkBridge Service Channel",
+            NotificationManager.IMPORTANCE_DEFAULT
+        )
+        val notificationManager =
+            getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        notificationManager.createNotificationChannel(channel)
+
         pm = packageManager
         enableEdgeToEdge()
         val context = this
@@ -78,7 +87,6 @@ class MainActivity : ComponentActivity() {
                         )
                         ServerContent(
                             context = context,
-                            webServer = webServer,
                             addressText = addressText
                         )
                     }
@@ -91,7 +99,6 @@ class MainActivity : ComponentActivity() {
         val connectivityManager =
             applicationContext.getSystemService(ConnectivityManager::class.java)
         connectivityManager.unregisterNetworkCallback(networkCallback)
-        webServer.shutdown()
         super.onDestroy()
     }
 }
@@ -105,7 +112,7 @@ fun Greeting(name: String, modifier: Modifier = Modifier) {
 }
 
 @Composable
-fun ServerContent(context: Context, webServer: WebServer, addressText: String) {
+fun ServerContent(context: Context, addressText: String) {
     val uriHandler = LocalUriHandler.current
     var status by rememberSaveable { mutableStateOf("Stopped") }
     var addressButton by rememberSaveable { mutableStateOf("Show Server IP") }
@@ -119,11 +126,11 @@ fun ServerContent(context: Context, webServer: WebServer, addressText: String) {
             Button(
                 onClick = {
                     status = "Starting..."
-                    webServer.start({
+                    Intent(context.applicationContext, WebService::class.java).also {
+                        it.action = WebService.Actions.START.toString()
+                        context.applicationContext.startService(it)
                         status = "Running"
-                    }, {
-                        status = "Stopped"
-                    })
+                    }
                     Toast.makeText(context, "Starting server...", Toast.LENGTH_SHORT)
                         .show()
                 },
@@ -134,7 +141,11 @@ fun ServerContent(context: Context, webServer: WebServer, addressText: String) {
             Button(
                 onClick = {
                     status = "Stopping..."
-                    webServer.shutdown()
+                    Intent(context.applicationContext, WebService::class.java).also {
+                        it.action = WebService.Actions.STOP.toString()
+                        context.applicationContext.startService(it)
+                        status = "Stopped"
+                    }
                     Toast.makeText(context, "Stopping server...", Toast.LENGTH_SHORT)
                         .show()
                 },

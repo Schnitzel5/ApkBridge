@@ -1,7 +1,6 @@
 package me.schnitzel.apkbridge.web;
 
 import java.io.IOException;
-import java.util.Map;
 import java.util.function.Consumer;
 
 import fi.iki.elonen.NanoHTTPD;
@@ -9,6 +8,7 @@ import fi.iki.elonen.router.RouterNanoHTTPD;
 
 public class WebServer extends RouterNanoHTTPD {
     private Consumer<Void> callbackEnd;
+    private boolean isRunning = false;
 
     public WebServer() {
         super(8080);
@@ -21,6 +21,7 @@ public class WebServer extends RouterNanoHTTPD {
             System.out.println("\nRunning! Point your browsers to http://localhost:8080/ \n");
             callbackStart.accept(null);
             this.callbackEnd = callbackEnd;
+            isRunning = true;
         } catch (IOException e) {
             callbackEnd.accept(null);
         }
@@ -31,20 +32,25 @@ public class WebServer extends RouterNanoHTTPD {
         super.addMappings();
         addRoute("/", IndexHandler.class);
         addRoute("/dalvik", DalvikHandler.class);
-        addRoute("/stop", new GeneralHandler() {
+        /*addRoute("/stop", new GeneralHandler() {
             @Override
             public Response get(UriResource uriResource, Map<String, String> urlParams, IHTTPSession session) {
                 shutdown();
                 return newFixedLengthResponse(NanoHTTPD.Response.Status.OK, MIME_PLAINTEXT,
                         "Shutting down...");
             }
-        }.getClass());
+        }.getClass());*/
+    }
+
+    public boolean isRunning() {
+        return isRunning;
     }
 
     public void shutdown() {
         if (callbackEnd != null) {
             callbackEnd.accept(null);
         }
+        isRunning = false;
         stop();
     }
 }
