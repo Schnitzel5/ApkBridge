@@ -1,6 +1,7 @@
 package me.schnitzel.apkbridge
 
 import android.Manifest.permission.POST_NOTIFICATIONS
+import android.annotation.SuppressLint
 import android.app.DownloadManager
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -51,6 +52,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
+import androidx.preference.PreferenceManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -67,6 +69,11 @@ import java.io.File
 
 @JvmField
 var pm: PackageManager? = null
+@JvmField
+var instance: MainActivity? = null
+@SuppressLint("StaticFieldLeak")
+@JvmField
+var preferenceManager: PreferenceManager? = null
 
 class MainActivity : ComponentActivity() {
     private var addressText by mutableStateOf("No info")
@@ -120,8 +127,11 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    @SuppressLint("RestrictedApi")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        instance = this
+        preferenceManager = PreferenceManager(applicationContext)
         Injekt.importModule(AppModule(this))
         val connectivityManager =
             applicationContext.getSystemService(ConnectivityManager::class.java)

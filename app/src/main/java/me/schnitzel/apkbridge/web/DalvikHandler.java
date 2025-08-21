@@ -3,31 +3,49 @@ package me.schnitzel.apkbridge.web;
 import static fi.iki.elonen.NanoHTTPD.MIME_PLAINTEXT;
 import static fi.iki.elonen.NanoHTTPD.newFixedLengthResponse;
 
+import android.content.SharedPreferences;
 import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
+import android.util.Log;
+
+import androidx.preference.CheckBoxPreference;
+import androidx.preference.EditTextPreference;
+import androidx.preference.ListPreference;
+import androidx.preference.MultiSelectListPreference;
+import androidx.preference.Preference;
+import androidx.preference.PreferenceManager;
+import androidx.preference.PreferenceScreen;
+import androidx.preference.SwitchPreference;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Base64;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.function.BiFunction;
+import java.util.stream.Collectors;
 
 import dalvik.system.DexClassLoader;
 import eu.kanade.tachiyomi.animesource.AnimeCatalogueSource;
 import eu.kanade.tachiyomi.animesource.AnimeSource;
 import eu.kanade.tachiyomi.animesource.AnimeSourceFactory;
+import eu.kanade.tachiyomi.animesource.ConfigurableAnimeSource;
+import eu.kanade.tachiyomi.animesource.model.AnimeFilter;
 import eu.kanade.tachiyomi.animesource.model.AnimeFilterList;
 import eu.kanade.tachiyomi.animesource.online.AnimeHttpSource;
 import eu.kanade.tachiyomi.source.CatalogueSource;
+import eu.kanade.tachiyomi.source.ConfigurableSource;
 import eu.kanade.tachiyomi.source.MangaSource;
 import eu.kanade.tachiyomi.source.SourceFactory;
+import eu.kanade.tachiyomi.source.model.Filter;
 import eu.kanade.tachiyomi.source.model.FilterList;
 import eu.kanade.tachiyomi.source.online.HttpSource;
 import fi.iki.elonen.NanoHTTPD;
@@ -35,7 +53,24 @@ import fi.iki.elonen.router.RouterNanoHTTPD;
 import kotlin.coroutines.Continuation;
 import kotlin.coroutines.EmptyCoroutineContext;
 import kotlinx.coroutines.BuildersKt;
+import me.schnitzel.apkbridge.MainActivity;
 import me.schnitzel.apkbridge.MainActivityKt;
+import keiyoushi.utils.PreferencesKt;
+import me.schnitzel.apkbridge.web.filter.JAnimeFilterGroup;
+import me.schnitzel.apkbridge.web.filter.JAnimeFilterSelect;
+import me.schnitzel.apkbridge.web.filter.JAnimeFilterSort;
+import me.schnitzel.apkbridge.web.filter.JAnimeFilterText;
+import me.schnitzel.apkbridge.web.filter.JFilterGroup;
+import me.schnitzel.apkbridge.web.filter.JFilterList;
+import me.schnitzel.apkbridge.web.filter.JFilterSelect;
+import me.schnitzel.apkbridge.web.filter.JFilterSort;
+import me.schnitzel.apkbridge.web.filter.JFilterText;
+import me.schnitzel.apkbridge.web.preference.JCheckBoxPreference;
+import me.schnitzel.apkbridge.web.preference.JEditTextPreference;
+import me.schnitzel.apkbridge.web.preference.JListPreference;
+import me.schnitzel.apkbridge.web.preference.JMultiSelectListPreference;
+import me.schnitzel.apkbridge.web.preference.JPreference;
+import me.schnitzel.apkbridge.web.preference.JSwitchPreference;
 
 public class DalvikHandler extends RouterNanoHTTPD.GeneralHandler {
     private final String ANIME_PACKAGE = "tachiyomi.animeextension";
@@ -81,74 +116,100 @@ public class DalvikHandler extends RouterNanoHTTPD.GeneralHandler {
     protected NanoHTTPD.Response resolve(DexClassLoader classLoader, File file, DataBody data, ObjectMapper mapper) throws InterruptedException {
         switch (data.method) {
             case "headersManga":
-                return buildResponse(invokeMangaSource(classLoader, file, (catalogueSource, continuation) -> {
+                return buildResponse(invokeMangaSource(classLoader, file, data, (catalogueSource, continuation) -> {
                     if (catalogueSource instanceof HttpSource) {
                         return ((HttpSource) catalogueSource).getHeaders().getNamesAndValues$okhttp();
                     }
                     return List.of();
                 }), mapper);
             case "filtersManga":
-                return buildResponse(invokeMangaSource(classLoader, file, (catalogueSource, continuation) -> catalogueSource.getFilterList()), mapper);
+                return buildResponse(invokeMangaSource(classLoader, file, data, (catalogueSource, continuation) -> catalogueSource.getFilterList()), mapper);
             case "supportLatestManga":
-                return buildResponse(invokeMangaSource(classLoader, file, (catalogueSource, continuation) -> catalogueSource.getSupportsLatest()), mapper);
+                return buildResponse(invokeMangaSource(classLoader, file, data, (catalogueSource, continuation) -> catalogueSource.getSupportsLatest()), mapper);
             case "getPopularManga":
-                return buildResponse(invokeMangaSource(classLoader, file, (catalogueSource, continuation) -> catalogueSource.getPopularManga(data.page, continuation)), mapper);
+                return buildResponse(invokeMangaSource(classLoader, file, data, (catalogueSource, continuation) -> catalogueSource.getPopularManga(data.page, continuation)), mapper);
             case "getLatestManga":
-                return buildResponse(invokeMangaSource(classLoader, file, (catalogueSource, continuation) -> catalogueSource.getLatestUpdates(data.page, continuation)), mapper);
+                return buildResponse(invokeMangaSource(classLoader, file, data, (catalogueSource, continuation) -> catalogueSource.getLatestUpdates(data.page, continuation)), mapper);
             case "getSearchManga":
-                FilterList filterList = data.filterListManga != null ? data.filterListManga : new FilterList(List.of());
-                return buildResponse(invokeMangaSource(classLoader, file, (catalogueSource, continuation) -> {
+                FilterList filterList = data.filterList != null ? convertFilterListManga(data.filterList) : new FilterList();
+                return buildResponse(invokeMangaSource(classLoader, file, data, (catalogueSource, continuation) -> {
                     catalogueSource.getSearchManga(data.page, data.search, filterList, continuation);
                     return catalogueSource.getSearchManga(data.page, data.search, filterList, continuation);
                 }), mapper);
             case "getDetailsManga":
                 if (data.mangaData != null) {
-                    return buildResponse(invokeMangaSource(classLoader, file, (catalogueSource, continuation) -> catalogueSource.getMangaDetails(data.mangaData, continuation)), mapper);
+                    return buildResponse(invokeMangaSource(classLoader, file, data, (catalogueSource, continuation) -> catalogueSource.getMangaDetails(data.mangaData, continuation)), mapper);
                 }
                 break;
             case "getChapterList":
                 if (data.mangaData != null) {
-                    return buildResponse(invokeMangaSource(classLoader, file, (catalogueSource, continuation) -> catalogueSource.getChapterList(data.mangaData, continuation)), mapper);
+                    return buildResponse(invokeMangaSource(classLoader, file, data, (catalogueSource, continuation) -> catalogueSource.getChapterList(data.mangaData, continuation)), mapper);
                 }
                 break;
             case "getPageList":
                 if (data.chapterData != null) {
-                    return buildResponse(invokeMangaSource(classLoader, file, (catalogueSource, continuation) -> catalogueSource.getPageList(data.chapterData, continuation)), mapper);
+                    return buildResponse(invokeMangaSource(classLoader, file, data, (catalogueSource, continuation) -> catalogueSource.getPageList(data.chapterData, continuation)), mapper);
                 }
                 break;
+            case "preferencesManga":
+                return buildResponse(invokeMangaSource(classLoader, file, data, (catalogueSource, continuation) -> {
+                    PreferenceManager preferenceManager = MainActivityKt.preferenceManager;
+                    MainActivity instance = MainActivityKt.instance;
+                    if (preferenceManager != null && instance != null && catalogueSource instanceof ConfigurableSource) {
+                        PreferenceScreen screen = preferenceManager.createPreferenceScreen(instance.getApplicationContext());
+                        ((ConfigurableSource) catalogueSource).setupPreferenceScreen(screen);
+                        List<JPreference> preferences = new ArrayList<>();
+                        processPreferences(screen, preferences);
+                        return preferences;
+                    }
+                    return Map.of();
+                }), mapper);
             case "headersAnime":
-                return buildResponse(invokeAnimeSource(classLoader, file, (animeCatalogueSource, continuation) -> {
+                return buildResponse(invokeAnimeSource(classLoader, file, data, (animeCatalogueSource, continuation) -> {
                     if (animeCatalogueSource instanceof AnimeHttpSource) {
                         return ((AnimeHttpSource) animeCatalogueSource).getHeaders().getNamesAndValues$okhttp();
                     }
                     return List.of();
                 }), mapper);
             case "filtersAnime":
-                return buildResponse(invokeAnimeSource(classLoader, file, (animeCatalogueSource, continuation) -> animeCatalogueSource.getFilterList()), mapper);
+                return buildResponse(invokeAnimeSource(classLoader, file, data, (animeCatalogueSource, continuation) -> animeCatalogueSource.getFilterList()), mapper);
             case "supportLatestAnime":
-                return buildResponse(invokeAnimeSource(classLoader, file, (animeCatalogueSource, continuation) -> animeCatalogueSource.getSupportsLatest()), mapper);
+                return buildResponse(invokeAnimeSource(classLoader, file, data, (animeCatalogueSource, continuation) -> animeCatalogueSource.getSupportsLatest()), mapper);
             case "getPopularAnime":
-                return buildResponse(invokeAnimeSource(classLoader, file, (animeCatalogueSource, continuation) -> animeCatalogueSource.getPopularAnime(data.page, continuation)), mapper);
+                return buildResponse(invokeAnimeSource(classLoader, file, data, (animeCatalogueSource, continuation) -> animeCatalogueSource.getPopularAnime(data.page, continuation)), mapper);
             case "getLatestAnime":
-                return buildResponse(invokeAnimeSource(classLoader, file, (animeCatalogueSource, continuation) -> animeCatalogueSource.getLatestUpdates(data.page, continuation)), mapper);
+                return buildResponse(invokeAnimeSource(classLoader, file, data, (animeCatalogueSource, continuation) -> animeCatalogueSource.getLatestUpdates(data.page, continuation)), mapper);
             case "getSearchAnime":
-                AnimeFilterList animeFilterList = data.filterListAnime != null ? data.filterListAnime : new AnimeFilterList();
-                return buildResponse(invokeAnimeSource(classLoader, file, (animeCatalogueSource, continuation) -> animeCatalogueSource.getSearchAnime(data.page, data.search, animeFilterList, continuation)), mapper);
+                AnimeFilterList animeFilterList = data.filterList != null ? convertFilterListAnime(data.filterList) : new AnimeFilterList();
+                return buildResponse(invokeAnimeSource(classLoader, file, data, (animeCatalogueSource, continuation) -> animeCatalogueSource.getSearchAnime(data.page, data.search, animeFilterList, continuation)), mapper);
             case "getDetailsAnime":
                 if (data.animeData != null) {
-                    return buildResponse(invokeAnimeSource(classLoader, file, (animeCatalogueSource, continuation) -> animeCatalogueSource.getAnimeDetails(data.animeData, continuation)), mapper);
+                    return buildResponse(invokeAnimeSource(classLoader, file, data, (animeCatalogueSource, continuation) -> animeCatalogueSource.getAnimeDetails(data.animeData, continuation)), mapper);
                 }
                 break;
             case "getEpisodeList":
                 if (data.animeData != null) {
-                    return buildResponse(invokeAnimeSource(classLoader, file, (animeCatalogueSource, continuation) -> animeCatalogueSource.getEpisodeList(data.animeData, continuation)), mapper);
+                    return buildResponse(invokeAnimeSource(classLoader, file, data, (animeCatalogueSource, continuation) -> animeCatalogueSource.getEpisodeList(data.animeData, continuation)), mapper);
                 }
                 break;
             case "getVideoList":
                 if (data.episodeData != null) {
-                    return buildResponse(invokeAnimeSource(classLoader, file, (animeCatalogueSource, continuation) -> animeCatalogueSource.getVideoList(data.episodeData, continuation)), mapper);
+                    return buildResponse(invokeAnimeSource(classLoader, file, data, (animeCatalogueSource, continuation) -> animeCatalogueSource.getVideoList(data.episodeData, continuation)), mapper);
                 }
                 break;
+            case "preferencesAnime":
+                return buildResponse(invokeAnimeSource(classLoader, file, data, (animeCatalogueSource, continuation) -> {
+                    PreferenceManager preferenceManager = MainActivityKt.preferenceManager;
+                    MainActivity instance = MainActivityKt.instance;
+                    if (preferenceManager != null && instance != null && animeCatalogueSource instanceof ConfigurableAnimeSource) {
+                        PreferenceScreen screen = preferenceManager.createPreferenceScreen(instance.getApplicationContext());
+                        ((ConfigurableAnimeSource) animeCatalogueSource).setupPreferenceScreen(screen);
+                        List<JPreference> preferences = new ArrayList<>();
+                        processPreferences(screen, preferences);
+                        return preferences;
+                    }
+                    return Map.of();
+                }), mapper);
         }
         return newFixedLengthResponse(NanoHTTPD.Response.Status.BAD_REQUEST, MIME_PLAINTEXT, "");
     }
@@ -164,7 +225,7 @@ public class DalvikHandler extends RouterNanoHTTPD.GeneralHandler {
         }).orElse(newFixedLengthResponse(NanoHTTPD.Response.Status.BAD_REQUEST, MIME_PLAINTEXT, ""));
     }
 
-    protected <T> Optional<T> invokeMangaSource(DexClassLoader classLoader, File file, BiFunction<CatalogueSource, Continuation<? super T>, ?> callback) {
+    protected <T> Optional<T> invokeMangaSource(DexClassLoader classLoader, File file, DataBody data, BiFunction<CatalogueSource, Continuation<? super T>, ?> callback) {
         if (pm == null) {
             return Optional.empty();
         }
@@ -194,6 +255,7 @@ public class DalvikHandler extends RouterNanoHTTPD.GeneralHandler {
             }).filter(sources -> !sources.isEmpty()).map(sources -> (CatalogueSource) sources.get(0)).map(src -> {
                 T result;
                 try {
+                    applyPreferences(data, src.getId());
                     result = BuildersKt.runBlocking(EmptyCoroutineContext.INSTANCE, (scope, continuation) -> callback.apply(src, continuation));
                 } catch (InterruptedException e) {
                     throw new RuntimeException(e);
@@ -204,7 +266,7 @@ public class DalvikHandler extends RouterNanoHTTPD.GeneralHandler {
         return Optional.empty();
     }
 
-    protected <T> Optional<T> invokeAnimeSource(DexClassLoader classLoader, File file, BiFunction<AnimeCatalogueSource, Continuation<? super T>, ?> callback) {
+    protected <T> Optional<T> invokeAnimeSource(DexClassLoader classLoader, File file, DataBody data, BiFunction<AnimeCatalogueSource, Continuation<? super T>, ?> callback) {
         if (pm == null) {
             return Optional.empty();
         }
@@ -234,6 +296,7 @@ public class DalvikHandler extends RouterNanoHTTPD.GeneralHandler {
             }).filter(sources -> !sources.isEmpty()).map(sources -> (AnimeCatalogueSource) sources.get(0)).map(src -> {
                 T result;
                 try {
+                    applyPreferences(data, src.getId());
                     result = BuildersKt.runBlocking(EmptyCoroutineContext.INSTANCE, (scope, continuation) -> callback.apply(src, continuation));
                 } catch (InterruptedException e) {
                     throw new RuntimeException(e);
@@ -246,5 +309,161 @@ public class DalvikHandler extends RouterNanoHTTPD.GeneralHandler {
 
     protected DexClassLoader load(File file) throws IOException {
         return new DexClassLoader(file.getAbsolutePath(), null, null, this.getClass().getClassLoader());
+    }
+
+    protected FilterList convertFilterListManga(List<JFilterList> data) {
+        List<Filter<?>> filters = new ArrayList<>();
+        for (JFilterList filter : data) {
+            switch (filter.type) {
+                case "TextFilter":
+                    if (filter.stateString != null) {
+                        filters.add(new JFilterText(filter.name, filter.stateString));
+                    }
+                    break;
+                case "GroupFilter":
+                    if (filter.stateList != null) {
+                        List<Filter<?>> groupFilters = new ArrayList<>();
+                        for (JFilterList.JGroupFilter group : filter.stateList) {
+                            if ("CheckBoxFilter".equals(group.type)) {
+                                groupFilters.add(new JFilterGroup.JFilterCheckbox(group.name, group.stateBoolean));
+                            }
+                            if ("TriStateFilter".equals(group.type)) {
+                                groupFilters.add(new JFilterGroup.JFilterTriState(group.name, group.stateInt));
+                            }
+                        }
+                        filters.add(new JFilterGroup<>(filter.name, groupFilters));
+                        System.out.println(filter.name + " - " + groupFilters.size());
+                    }
+                    break;
+                case "SelectFilter":
+                    filters.add(new JFilterSelect<>(filter.name, List.of().toArray(), filter.stateInt));
+                    break;
+                case "SortFilter":
+                    if (filter.stateSort != null) {
+                        filters.add(new JFilterSort(filter.name, new String[]{}, new Filter.Sort.Selection(filter.stateSort.index, filter.stateSort.ascending)));
+                    }
+                    break;
+            }
+        }
+        return new FilterList(filters);
+    }
+
+    protected AnimeFilterList convertFilterListAnime(List<JFilterList> data) {
+        List<AnimeFilter<?>> filters = new ArrayList<>();
+        for (JFilterList filter : data) {
+            switch (filter.type) {
+                case "TextFilter":
+                    if (filter.stateString != null) {
+                        filters.add(new JAnimeFilterText(filter.name, filter.stateString));
+                    }
+                    break;
+                case "GroupFilter":
+                    if (filter.stateList != null) {
+                        List<AnimeFilter<?>> groupFilters = new ArrayList<>();
+                        for (JFilterList.JGroupFilter group : filter.stateList) {
+                            if ("CheckBoxFilter".equals(group.type)) {
+                                groupFilters.add(new JAnimeFilterGroup.JFilterCheckbox(group.name, group.stateBoolean));
+                            }
+                            if ("TriStateFilter".equals(group.type)) {
+                                groupFilters.add(new JAnimeFilterGroup.JFilterTriState(group.name, group.stateInt));
+                            }
+                        }
+                        filters.add(new JAnimeFilterGroup<>(filter.name, groupFilters));
+                    }
+                    break;
+                case "SelectFilter":
+                    filters.add(new JAnimeFilterSelect<>(filter.name, List.of().toArray(), filter.stateInt));
+                    break;
+                case "SortFilter":
+                    if (filter.stateSort != null) {
+                        filters.add(new JAnimeFilterSort(filter.name, new String[]{}, new AnimeFilter.Sort.Selection(filter.stateSort.index, filter.stateSort.ascending)));
+                    }
+                    break;
+            }
+        }
+        return new AnimeFilterList(filters);
+    }
+
+    private void applyPreferences(DataBody data, long sourceId) {
+        if (data.preferences != null && !data.preferences.isEmpty()) {
+            SharedPreferences prefs = PreferencesKt.getPreferences(sourceId);
+            SharedPreferences.Editor editor = prefs.edit();
+            for (JPreference pref : data.preferences) {
+                if (pref.checkBoxPreference != null) {
+                    editor.putBoolean(pref.key, pref.checkBoxPreference.value);
+                }
+                if (pref.editTextPreference != null) {
+                    editor.putString(pref.key, pref.editTextPreference.value);
+                }
+                if (pref.listPreference != null) {
+                    editor.putString(pref.key, pref.listPreference.entryValues.get(pref.listPreference.valueIndex));
+                }
+                if (pref.multiSelectListPreference != null) {
+                    editor.putStringSet(pref.key, pref.multiSelectListPreference.values.stream().collect(Collectors.toSet()));
+                }
+                if (pref.switchPreferenceCompat != null) {
+                    editor.putBoolean(pref.key, pref.switchPreferenceCompat.value);
+                }
+            }
+            if (!editor.commit()) {
+                Log.d("DalvikHandler", "Unable to apply prefs for id: " + sourceId);
+            }
+        }
+    }
+
+    private void processPreferences(PreferenceScreen screen, List<JPreference> preferences) {
+        for (int i = 0; i < screen.getPreferenceCount(); i++) {
+            Preference pref = screen.getPreference(i);
+            JPreference temp = new JPreference();
+            temp.key = pref.getKey();
+            if (pref instanceof CheckBoxPreference) {
+                CheckBoxPreference lp = (CheckBoxPreference) pref;
+                JCheckBoxPreference checkBox = new JCheckBoxPreference();
+                checkBox.title = Objects.requireNonNull(lp.getTitle()).toString();
+                checkBox.summary = Objects.requireNonNull(lp.getSummary()).toString();
+                checkBox.value = lp.isChecked();
+                temp.checkBoxPreference = checkBox;
+            }
+            if (pref instanceof EditTextPreference) {
+                EditTextPreference lp = (EditTextPreference) pref;
+                JEditTextPreference editText = new JEditTextPreference();
+                editText.title = Objects.requireNonNull(lp.getTitle()).toString();
+                editText.summary = Objects.requireNonNull(lp.getSummary()).toString();
+                editText.dialogTitle = Objects.requireNonNull(lp.getDialogTitle()).toString();
+                editText.dialogMessage = Objects.requireNonNull(lp.getDialogMessage()).toString();
+                editText.text = lp.getText();
+                editText.value = lp.getText();
+                temp.editTextPreference = editText;
+            }
+            if (pref instanceof ListPreference) {
+                ListPreference lp = (ListPreference) pref;
+                JListPreference list = new JListPreference();
+                list.title = Objects.requireNonNull(lp.getTitle()).toString();
+                list.summary = Objects.requireNonNull(lp.getSummary()).toString();
+                list.valueIndex = Arrays.asList(lp.getEntryValues()).indexOf(lp.getValue());
+                list.entries = Arrays.stream(lp.getEntries()).map(CharSequence::toString).collect(Collectors.toList());
+                list.entryValues = Arrays.stream(lp.getEntryValues()).map(CharSequence::toString).collect(Collectors.toList());
+                temp.listPreference = list;
+            }
+            if (pref instanceof MultiSelectListPreference) {
+                MultiSelectListPreference lp = (MultiSelectListPreference) pref;
+                JMultiSelectListPreference multiList = new JMultiSelectListPreference();
+                multiList.title = Objects.requireNonNull(lp.getTitle()).toString();
+                multiList.summary = Objects.requireNonNull(lp.getSummary()).toString();
+                multiList.entries = Arrays.stream(lp.getEntries()).map(CharSequence::toString).collect(Collectors.toList());
+                multiList.entryValues = Arrays.stream(lp.getEntryValues()).map(CharSequence::toString).collect(Collectors.toList());
+                multiList.values = new ArrayList<>(lp.getValues());
+                temp.multiSelectListPreference = multiList;
+            }
+            if (pref instanceof SwitchPreference) {
+                SwitchPreference lp = (SwitchPreference) pref;
+                JSwitchPreference jswitch = new JSwitchPreference();
+                jswitch.title = Objects.requireNonNull(lp.getTitle()).toString();
+                jswitch.summary = Objects.requireNonNull(lp.getSummary()).toString();
+                jswitch.value = lp.isChecked();
+                temp.switchPreferenceCompat = jswitch;
+            }
+            preferences.add(temp);
+        }
     }
 }

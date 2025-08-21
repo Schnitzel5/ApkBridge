@@ -1,11 +1,13 @@
 package me.schnitzel.apkbridge.web;
 
+import java.util.List;
+
 import me.schnitzel.apkbridge.web.model.Anime;
 import me.schnitzel.apkbridge.web.model.Chapter;
 import me.schnitzel.apkbridge.web.model.Episode;
-import me.schnitzel.apkbridge.web.model.FilterListAnime;
-import me.schnitzel.apkbridge.web.model.FilterListManga;
+import me.schnitzel.apkbridge.web.filter.JFilterList;
 import me.schnitzel.apkbridge.web.model.Manga;
+import me.schnitzel.apkbridge.web.preference.JPreference;
 
 public class DataBody {
     public String data;
@@ -16,8 +18,8 @@ public class DataBody {
     public Chapter chapterData;
     public Anime animeData;
     public Episode episodeData;
-    public FilterListManga filterListManga;
-    public FilterListAnime filterListAnime;
+    public List<JFilterList> filterList;
+    public List<JPreference> preferences;
 
     public DataBody() {
     }
