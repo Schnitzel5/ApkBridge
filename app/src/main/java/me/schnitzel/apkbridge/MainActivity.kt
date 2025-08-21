@@ -1,5 +1,6 @@
 package me.schnitzel.apkbridge
 
+import android.Manifest.permission.POST_NOTIFICATIONS
 import android.app.DownloadManager
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -16,12 +17,13 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.Environment
-import android.provider.MediaStore
 import android.util.Log
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.ActivityResultLauncher
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -47,6 +49,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -81,9 +84,7 @@ class MainActivity : ComponentActivity() {
                     install.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                     install.setDataAndType(
                         FileProvider.getUriForFile(
-                            context,
-                            "${context.applicationContext.packageName}.provider",
-                            File(
+                            context, "${context.applicationContext.packageName}.provider", File(
                                 Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
                                 apkName
                             )
@@ -126,6 +127,7 @@ class MainActivity : ComponentActivity() {
             applicationContext.getSystemService(ConnectivityManager::class.java)
         connectivityManager.registerDefaultNetworkCallback(networkCallback)
 
+        askNotificationPermission(registerForActivityResult(ActivityResultContracts.RequestPermission()) { _ -> })
         val channel = NotificationChannel(
             "ApkBridgeServiceChannelId",
             "ApkBridge Service Channel",
@@ -211,9 +213,20 @@ class MainActivity : ComponentActivity() {
         super.onDestroy()
     }
 
+    private fun askNotificationPermission(requestPermission: ActivityResultLauncher<String>) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (ContextCompat.checkSelfPermission(
+                    this,
+                    POST_NOTIFICATIONS
+                ) != PackageManager.PERMISSION_GRANTED
+            ) {
+                requestPermission.launch(POST_NOTIFICATIONS)
+            }
+        }
+    }
+
     private fun checkUpdate(context: Context, client: OkHttpClient) {
-        makeGetRequest(
-            client,
+        makeGetRequest(client,
             "https://github.com/Schnitzel5/ApkBridge/releases/latest",
             object : Callback {
                 override fun onResponse(call: Call, response: Response) {
