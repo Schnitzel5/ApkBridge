@@ -16,6 +16,8 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.Environment
+import android.provider.MediaStore
+import android.util.Log
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -45,6 +47,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import androidx.core.content.FileProvider
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -57,20 +60,40 @@ import okhttp3.Request
 import okhttp3.Response
 import okio.IOException
 import uy.kohesive.injekt.Injekt
+import java.io.File
 
 @JvmField
 var pm: PackageManager? = null
 
 class MainActivity : ComponentActivity() {
     private var addressText by mutableStateOf("No info")
+    private var apkName = ""
     private var updateResponse by mutableStateOf("")
     private var updateText by mutableStateOf("")
     private var showNewUpdate by mutableStateOf(false)
     private val broadcastReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
-            val install = Intent(Intent.ACTION_VIEW)
-            install.setDataAndType(Uri.parse(DownloadManager.COLUMN_LOCAL_URI), "MIME-TYPE")
-            startActivity(install)
+            try {
+                val install = Intent(Intent.ACTION_VIEW)
+                if (context != null && apkName.isNotBlank()) {
+                    Log.d("Downloaded", apkName)
+                    install.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    install.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    install.setDataAndType(
+                        FileProvider.getUriForFile(
+                            context,
+                            "${context.applicationContext.packageName}.provider",
+                            File(
+                                Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
+                                apkName
+                            )
+                        ), "application/vnd.android.package-archive"
+                    )
+                    startActivity(install)
+                }
+            } catch (e: Exception) {
+                e.message?.let { Log.e("Downloaded", it) }
+            }
         }
     }
     private var networkCallback = object : ConnectivityManager.NetworkCallback() {
@@ -113,10 +136,15 @@ class MainActivity : ComponentActivity() {
         notificationManager.createNotificationChannel(channel)
 
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
-            @Suppress("UnspecifiedRegisterReceiverFlag")
-            registerReceiver(broadcastReceiver, IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE))
+            @Suppress("UnspecifiedRegisterReceiverFlag") registerReceiver(
+                broadcastReceiver, IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE)
+            )
         } else {
-            registerReceiver(broadcastReceiver, IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE), RECEIVER_NOT_EXPORTED)
+            registerReceiver(
+                broadcastReceiver,
+                IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE),
+                RECEIVER_EXPORTED
+            )
         }
 
         val coroutineScope = CoroutineScope(Dispatchers.IO)
@@ -155,7 +183,9 @@ class MainActivity : ComponentActivity() {
                                     onConfirmation = {
                                         coroutineScope.launch {
                                             val client = OkHttpClient()
-                                            requestDownload(applicationContext, updateResponse, client)
+                                            requestDownload(
+                                                applicationContext, updateResponse, client
+                                            )
                                         }
                                     },
                                 )
@@ -191,7 +221,8 @@ class MainActivity : ComponentActivity() {
                     runOnUiThread {
                         if (isNewUpdateAvailable(context, responseData) == true) {
                             updateResponse = responseData
-                            updateText = "v${getCurrentVersion(context)} -> v${getLatestVersion(responseData)}"
+                            updateText =
+                                "v${getCurrentVersion(context)} -> v${getLatestVersion(responseData)}"
                             showNewUpdate = true
                         }
                     }
@@ -231,6 +262,7 @@ class MainActivity : ComponentActivity() {
                 val request = DownloadManager.Request(Uri.parse("https://github.com/$apkLink"))
                 val downloadManager =
                     context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
+                apkName = title
                 request.setTitle(title)
                 request.setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
                 request.setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, title)

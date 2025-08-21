@@ -33,6 +33,15 @@
             </intent-filter>
         </activity>
         <service android:name=".web.service.WebService" android:foregroundServiceType="mediaPlayback" />
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="me.schnitzel.apkbridge.provider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/provider_paths" />
+        </provider>
     </application>
 
 </manifest>
