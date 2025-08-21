@@ -1,4 +1,4 @@
-package me.schnitzel.apkbridge.web;
+package me.schnitzel.apkbridge.web.model;
 
 import com.fasterxml.jackson.annotation.JsonCreator;
 

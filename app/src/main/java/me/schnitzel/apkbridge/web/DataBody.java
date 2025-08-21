@@ -1,5 +1,12 @@
 package me.schnitzel.apkbridge.web;
 
+import me.schnitzel.apkbridge.web.model.Anime;
+import me.schnitzel.apkbridge.web.model.Chapter;
+import me.schnitzel.apkbridge.web.model.Episode;
+import me.schnitzel.apkbridge.web.model.FilterListAnime;
+import me.schnitzel.apkbridge.web.model.FilterListManga;
+import me.schnitzel.apkbridge.web.model.Manga;
+
 public class DataBody {
     public String data;
     public String method;

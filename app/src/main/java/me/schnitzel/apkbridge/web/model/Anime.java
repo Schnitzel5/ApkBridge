@@ -1,14 +1,14 @@
-package me.schnitzel.apkbridge.web;
+package me.schnitzel.apkbridge.web.model;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
 import java.util.List;
 
-import eu.kanade.tachiyomi.source.model.SManga;
+import eu.kanade.tachiyomi.animesource.model.SAnime;
 import eu.kanade.tachiyomi.source.model.UpdateStrategy;
 
-public class Manga implements SManga {
+public class Anime implements SAnime {
     private String url;
     private String title;
     private String artist;
@@ -20,7 +20,7 @@ public class Manga implements SManga {
     private UpdateStrategy updateStrategy;
     private boolean initialized;
 
-    public Manga() {
+    public Anime() {
     }
 
     @NonNull
@@ -138,7 +138,7 @@ public class Manga implements SManga {
     }
 
     @Override
-    public void copyFrom(@NonNull SManga other) {
+    public void copyFrom(@NonNull SAnime other) {
         url = other.getUrl();
         title = other.getTitle();
         artist = other.getArtist();
@@ -153,9 +153,9 @@ public class Manga implements SManga {
 
     @NonNull
     @Override
-    public SManga copy() {
-        Manga manga = new Manga();
-        manga.copyFrom(this);
-        return manga;
+    public SAnime copy() {
+        Anime anime = new Anime();
+        anime.copyFrom(this);
+        return anime;
     }
 }

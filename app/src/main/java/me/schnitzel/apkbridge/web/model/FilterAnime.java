@@ -1,4 +1,4 @@
-package me.schnitzel.apkbridge.web;
+package me.schnitzel.apkbridge.web.model;
 
 import androidx.annotation.NonNull;
 
@@ -6,12 +6,12 @@ import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
 
-import eu.kanade.tachiyomi.source.model.Filter;
+import eu.kanade.tachiyomi.animesource.model.AnimeFilter;
 
 @JsonIgnoreProperties(ignoreUnknown = true)
-public class FilterManga<T> extends Filter<T> {
+public class FilterAnime<T> extends AnimeFilter<T> {
     @JsonCreator
-    public FilterManga(@NonNull @JsonProperty("name") String name, @JsonProperty("state") T state) {
+    public FilterAnime(@NonNull @JsonProperty("name") String name, @JsonProperty("state") T state) {
         super(name, state);
     }
 }

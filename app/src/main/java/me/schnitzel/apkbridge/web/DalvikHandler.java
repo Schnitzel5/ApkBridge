@@ -96,8 +96,11 @@ public class DalvikHandler extends RouterNanoHTTPD.GeneralHandler {
             case "getLatestManga":
                 return buildResponse(invokeMangaSource(classLoader, file, (catalogueSource, continuation) -> catalogueSource.getLatestUpdates(data.page, continuation)), mapper);
             case "getSearchManga":
-                FilterList filterList = data.filterListManga != null ? data.filterListManga : new FilterList();
-                return buildResponse(invokeMangaSource(classLoader, file, (catalogueSource, continuation) -> catalogueSource.getSearchManga(data.page, data.search, filterList, continuation)), mapper);
+                FilterList filterList = data.filterListManga != null ? data.filterListManga : new FilterList(List.of());
+                return buildResponse(invokeMangaSource(classLoader, file, (catalogueSource, continuation) -> {
+                    catalogueSource.getSearchManga(data.page, data.search, filterList, continuation);
+                    return catalogueSource.getSearchManga(data.page, data.search, filterList, continuation);
+                }), mapper);
             case "getDetailsManga":
                 if (data.mangaData != null) {
                     return buildResponse(invokeMangaSource(classLoader, file, (catalogueSource, continuation) -> catalogueSource.getMangaDetails(data.mangaData, continuation)), mapper);
@@ -162,6 +165,9 @@ public class DalvikHandler extends RouterNanoHTTPD.GeneralHandler {
     }
 
     protected <T> Optional<T> invokeMangaSource(DexClassLoader classLoader, File file, BiFunction<CatalogueSource, Continuation<? super T>, ?> callback) {
+        if (pm == null) {
+            return Optional.empty();
+        }
         PackageInfo info = pm.getPackageArchiveInfo(file.getAbsolutePath(), PackageManager.GET_CONFIGURATIONS | PackageManager.GET_META_DATA);
         if (info != null && info.applicationInfo != null) {
             System.out.println(info.applicationInfo.metaData.toString());
@@ -199,6 +205,9 @@ public class DalvikHandler extends RouterNanoHTTPD.GeneralHandler {
     }
 
     protected <T> Optional<T> invokeAnimeSource(DexClassLoader classLoader, File file, BiFunction<AnimeCatalogueSource, Continuation<? super T>, ?> callback) {
+        if (pm == null) {
+            return Optional.empty();
+        }
         PackageInfo info = pm.getPackageArchiveInfo(file.getAbsolutePath(), PackageManager.GET_CONFIGURATIONS | PackageManager.GET_META_DATA);
         if (info != null && info.applicationInfo != null) {
             System.out.println(info.applicationInfo.metaData.toString());
