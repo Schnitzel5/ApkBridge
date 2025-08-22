@@ -26,6 +26,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Base64;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -56,15 +57,7 @@ import kotlinx.coroutines.BuildersKt;
 import me.schnitzel.apkbridge.MainActivity;
 import me.schnitzel.apkbridge.MainActivityKt;
 import keiyoushi.utils.PreferencesKt;
-import me.schnitzel.apkbridge.web.filter.JAnimeFilterGroup;
-import me.schnitzel.apkbridge.web.filter.JAnimeFilterSelect;
-import me.schnitzel.apkbridge.web.filter.JAnimeFilterSort;
-import me.schnitzel.apkbridge.web.filter.JAnimeFilterText;
-import me.schnitzel.apkbridge.web.filter.JFilterGroup;
 import me.schnitzel.apkbridge.web.filter.JFilterList;
-import me.schnitzel.apkbridge.web.filter.JFilterSelect;
-import me.schnitzel.apkbridge.web.filter.JFilterSort;
-import me.schnitzel.apkbridge.web.filter.JFilterText;
 import me.schnitzel.apkbridge.web.preference.JCheckBoxPreference;
 import me.schnitzel.apkbridge.web.preference.JEditTextPreference;
 import me.schnitzel.apkbridge.web.preference.JListPreference;
@@ -73,9 +66,9 @@ import me.schnitzel.apkbridge.web.preference.JPreference;
 import me.schnitzel.apkbridge.web.preference.JSwitchPreference;
 
 public class DalvikHandler extends RouterNanoHTTPD.GeneralHandler {
-    private final String ANIME_PACKAGE = "tachiyomi.animeextension";
-    private final String MANGA_PACKAGE = "tachiyomi.extension";
-    private final String XX_METADATA_SOURCE_CLASS = ".class";
+    private static final String ANIME_PACKAGE = "tachiyomi.animeextension";
+    private static final String MANGA_PACKAGE = "tachiyomi.extension";
+    private static final String XX_METADATA_SOURCE_CLASS = ".class";
 
     private final PackageManager pm;
 
@@ -86,6 +79,7 @@ public class DalvikHandler extends RouterNanoHTTPD.GeneralHandler {
     @Override
     public NanoHTTPD.Response post(RouterNanoHTTPD.UriResource uriResource, Map<String, String> urlParams, NanoHTTPD.IHTTPSession session) {
         if (session.getMethod() == NanoHTTPD.Method.POST) {
+            File file = null;
             try {
                 final Map<String, String> body = new HashMap<>();
                 ObjectMapper mapper = new ObjectMapper();
@@ -93,7 +87,7 @@ public class DalvikHandler extends RouterNanoHTTPD.GeneralHandler {
                 body.forEach((k, v) -> System.out.println(k + " - " + v));
                 String postData = body.get("postData");
                 DataBody data = mapper.readValue(postData, DataBody.class);
-                File file = File.createTempFile("ext", ".apk");
+                file = File.createTempFile("ext", ".apk");
                 file.setWritable(true);
                 try (FileOutputStream outputStream = new FileOutputStream(file)) {
                     outputStream.write(Base64.getDecoder().decode(data.data));
@@ -108,6 +102,10 @@ public class DalvikHandler extends RouterNanoHTTPD.GeneralHandler {
             } catch (IOException | NanoHTTPD.ResponseException | InterruptedException e) {
                 System.err.println(e.getMessage());
                 return newFixedLengthResponse(NanoHTTPD.Response.Status.INTERNAL_ERROR, MIME_PLAINTEXT, "");
+            } finally {
+                if (file != null && file.exists()) {
+                    file.delete();
+                }
             }
         }
         return newFixedLengthResponse(NanoHTTPD.Response.Status.NOT_FOUND, MIME_PLAINTEXT, "");
@@ -131,9 +129,8 @@ public class DalvikHandler extends RouterNanoHTTPD.GeneralHandler {
             case "getLatestManga":
                 return buildResponse(invokeMangaSource(classLoader, file, data, (catalogueSource, continuation) -> catalogueSource.getLatestUpdates(data.page, continuation)), mapper);
             case "getSearchManga":
-                FilterList filterList = data.filterList != null ? convertFilterListManga(data.filterList) : new FilterList();
                 return buildResponse(invokeMangaSource(classLoader, file, data, (catalogueSource, continuation) -> {
-                    catalogueSource.getSearchManga(data.page, data.search, filterList, continuation);
+                    FilterList filterList = data.filterList != null ? convertFilterListManga(catalogueSource.getFilterList(), data.filterList) : catalogueSource.getFilterList();
                     return catalogueSource.getSearchManga(data.page, data.search, filterList, continuation);
                 }), mapper);
             case "getDetailsManga":
@@ -180,8 +177,10 @@ public class DalvikHandler extends RouterNanoHTTPD.GeneralHandler {
             case "getLatestAnime":
                 return buildResponse(invokeAnimeSource(classLoader, file, data, (animeCatalogueSource, continuation) -> animeCatalogueSource.getLatestUpdates(data.page, continuation)), mapper);
             case "getSearchAnime":
-                AnimeFilterList animeFilterList = data.filterList != null ? convertFilterListAnime(data.filterList) : new AnimeFilterList();
-                return buildResponse(invokeAnimeSource(classLoader, file, data, (animeCatalogueSource, continuation) -> animeCatalogueSource.getSearchAnime(data.page, data.search, animeFilterList, continuation)), mapper);
+                return buildResponse(invokeAnimeSource(classLoader, file, data, (animeCatalogueSource, continuation) -> {
+                    AnimeFilterList animeFilterList = data.filterList != null ? convertFilterListAnime(animeCatalogueSource.getFilterList(), data.filterList) : animeCatalogueSource.getFilterList();
+                    return animeCatalogueSource.getSearchAnime(data.page, data.search, animeFilterList, continuation);
+                }), mapper);
             case "getDetailsAnime":
                 if (data.animeData != null) {
                     return buildResponse(invokeAnimeSource(classLoader, file, data, (animeCatalogueSource, continuation) -> animeCatalogueSource.getAnimeDetails(data.animeData, continuation)), mapper);
@@ -232,7 +231,11 @@ public class DalvikHandler extends RouterNanoHTTPD.GeneralHandler {
         PackageInfo info = pm.getPackageArchiveInfo(file.getAbsolutePath(), PackageManager.GET_CONFIGURATIONS | PackageManager.GET_META_DATA);
         if (info != null && info.applicationInfo != null) {
             System.out.println(info.applicationInfo.metaData.toString());
-            return Arrays.stream(info.applicationInfo.metaData.getString(MANGA_PACKAGE + XX_METADATA_SOURCE_CLASS).split(";")).map(s -> {
+            String metaSourceClass = info.applicationInfo.metaData.getString(MANGA_PACKAGE + XX_METADATA_SOURCE_CLASS);
+            if (metaSourceClass == null) {
+                return Optional.empty();
+            }
+            return Arrays.stream(metaSourceClass.split(";")).map(s -> {
                 String sourceClass = s.trim();
                 if (sourceClass.startsWith(".")) {
                     return info.packageName + sourceClass;
@@ -273,7 +276,11 @@ public class DalvikHandler extends RouterNanoHTTPD.GeneralHandler {
         PackageInfo info = pm.getPackageArchiveInfo(file.getAbsolutePath(), PackageManager.GET_CONFIGURATIONS | PackageManager.GET_META_DATA);
         if (info != null && info.applicationInfo != null) {
             System.out.println(info.applicationInfo.metaData.toString());
-            return Arrays.stream(info.applicationInfo.metaData.getString(ANIME_PACKAGE + XX_METADATA_SOURCE_CLASS).split(";")).map(s -> {
+            String metaSourceClass = info.applicationInfo.metaData.getString(ANIME_PACKAGE + XX_METADATA_SOURCE_CLASS);
+            if (metaSourceClass == null) {
+                return Optional.empty();
+            }
+            return Arrays.stream(metaSourceClass.split(";")).map(s -> {
                 String sourceClass = s.trim();
                 if (sourceClass.startsWith(".")) {
                     return info.packageName + sourceClass;
@@ -311,77 +318,100 @@ public class DalvikHandler extends RouterNanoHTTPD.GeneralHandler {
         return new DexClassLoader(file.getAbsolutePath(), null, null, this.getClass().getClassLoader());
     }
 
-    protected FilterList convertFilterListManga(List<JFilterList> data) {
-        List<Filter<?>> filters = new ArrayList<>();
-        for (JFilterList filter : data) {
-            switch (filter.type) {
-                case "TextFilter":
-                    if (filter.stateString != null) {
-                        filters.add(new JFilterText(filter.name, filter.stateString));
-                    }
-                    break;
-                case "GroupFilter":
-                    if (filter.stateList != null) {
-                        List<Filter<?>> groupFilters = new ArrayList<>();
-                        for (JFilterList.JGroupFilter group : filter.stateList) {
-                            if ("CheckBoxFilter".equals(group.type)) {
-                                groupFilters.add(new JFilterGroup.JFilterCheckbox(group.name, group.stateBoolean));
-                            }
-                            if ("TriStateFilter".equals(group.type)) {
-                                groupFilters.add(new JFilterGroup.JFilterTriState(group.name, group.stateInt));
-                            }
+    protected FilterList convertFilterListManga(FilterList defaultFilters, List<JFilterList> data) {
+        for (Filter<?> filter : defaultFilters.getList()) {
+            JFilterList dataFilter = data.stream().filter(e -> filter.getName().equalsIgnoreCase(e.name)).findFirst().orElse(null);
+            if (dataFilter == null) {
+                continue;
+            }
+            if (filter instanceof Filter.Text) {
+                Filter.Text temp = (Filter.Text) filter;
+                temp.setState(dataFilter.stateString);
+            }
+            if (filter instanceof Filter.Group<?>) {
+                Filter.Group<?> temp = (Filter.Group<?>) filter;
+                if (temp.getState() != null) {
+                    for (Object state : temp.getState()) {
+                        if (!(state instanceof Filter<?>)) {
+                            continue;
                         }
-                        filters.add(new JFilterGroup<>(filter.name, groupFilters));
-                        System.out.println(filter.name + " - " + groupFilters.size());
+                        JFilterList.JGroupFilter dataGroup = dataFilter.stateList.stream().filter(e -> ((Filter<?>) state).getName().equalsIgnoreCase(e.name)).findFirst().orElse(null);
+                        if (dataGroup == null) {
+                            continue;
+                        }
+                        if (state instanceof Filter.CheckBox) {
+                            Filter.CheckBox checkBox = (Filter.CheckBox) state;
+                            checkBox.setState(dataGroup.stateBoolean);
+                        }
+                        if (state instanceof Filter.TriState) {
+                            Filter.TriState checkBox = (Filter.TriState) state;
+                            checkBox.setState(dataGroup.stateInt);
+                        }
                     }
-                    break;
-                case "SelectFilter":
-                    filters.add(new JFilterSelect<>(filter.name, List.of().toArray(), filter.stateInt));
-                    break;
-                case "SortFilter":
-                    if (filter.stateSort != null) {
-                        filters.add(new JFilterSort(filter.name, new String[]{}, new Filter.Sort.Selection(filter.stateSort.index, filter.stateSort.ascending)));
-                    }
-                    break;
+                }
+            }
+            if (filter instanceof Filter.Select<?>) {
+                Filter.Select<?> temp = (Filter.Select<?>) filter;
+                temp.setState(dataFilter.stateInt);
+            }
+            if (filter instanceof Filter.Sort) {
+                Filter.Sort temp = (Filter.Sort) filter;
+                JFilterList.JSortFilter dataSort = dataFilter.stateSort;
+                if (dataSort == null) {
+                    continue;
+                }
+                temp.setState(temp.getState().copy(dataSort.index, dataSort.ascending));
             }
         }
-        return new FilterList(filters);
+        return defaultFilters;
     }
 
-    protected AnimeFilterList convertFilterListAnime(List<JFilterList> data) {
-        List<AnimeFilter<?>> filters = new ArrayList<>();
-        for (JFilterList filter : data) {
-            switch (filter.type) {
-                case "TextFilter":
-                    if (filter.stateString != null) {
-                        filters.add(new JAnimeFilterText(filter.name, filter.stateString));
-                    }
-                    break;
-                case "GroupFilter":
-                    if (filter.stateList != null) {
-                        List<AnimeFilter<?>> groupFilters = new ArrayList<>();
-                        for (JFilterList.JGroupFilter group : filter.stateList) {
-                            if ("CheckBoxFilter".equals(group.type)) {
-                                groupFilters.add(new JAnimeFilterGroup.JFilterCheckbox(group.name, group.stateBoolean));
-                            }
-                            if ("TriStateFilter".equals(group.type)) {
-                                groupFilters.add(new JAnimeFilterGroup.JFilterTriState(group.name, group.stateInt));
-                            }
+    protected AnimeFilterList convertFilterListAnime(AnimeFilterList defaultFilters, List<JFilterList> data) {
+        for (AnimeFilter<?> filter : defaultFilters.getList()) {
+            JFilterList dataFilter = data.stream().filter(e -> filter.getName().equalsIgnoreCase(e.name)).findFirst().orElse(null);
+            if (dataFilter == null) {
+                continue;
+            }
+            if (filter instanceof AnimeFilter.Text) {
+                AnimeFilter.Text temp = (AnimeFilter.Text) filter;
+                temp.setState(dataFilter.stateString);
+            }
+            if (filter instanceof AnimeFilter.Group<?>) {
+                AnimeFilter.Group<?> temp = (AnimeFilter.Group<?>) filter;
+                if (temp.getState() != null) {
+                    for (Object state : temp.getState()) {
+                        if (!(state instanceof AnimeFilter<?>)) {
+                            continue;
                         }
-                        filters.add(new JAnimeFilterGroup<>(filter.name, groupFilters));
+                        JFilterList.JGroupFilter dataGroup = dataFilter.stateList.stream().filter(e -> ((AnimeFilter<?>) state).getName().equalsIgnoreCase(e.name)).findFirst().orElse(null);
+                        if (dataGroup == null) {
+                            continue;
+                        }
+                        if (state instanceof AnimeFilter.CheckBox) {
+                            AnimeFilter.CheckBox checkBox = (AnimeFilter.CheckBox) state;
+                            checkBox.setState(dataGroup.stateBoolean);
+                        }
+                        if (state instanceof AnimeFilter.TriState) {
+                            AnimeFilter.TriState checkBox = (AnimeFilter.TriState) state;
+                            checkBox.setState(dataGroup.stateInt);
+                        }
                     }
-                    break;
-                case "SelectFilter":
-                    filters.add(new JAnimeFilterSelect<>(filter.name, List.of().toArray(), filter.stateInt));
-                    break;
-                case "SortFilter":
-                    if (filter.stateSort != null) {
-                        filters.add(new JAnimeFilterSort(filter.name, new String[]{}, new AnimeFilter.Sort.Selection(filter.stateSort.index, filter.stateSort.ascending)));
-                    }
-                    break;
+                }
+            }
+            if (filter instanceof AnimeFilter.Select<?>) {
+                AnimeFilter.Select<?> temp = (AnimeFilter.Select<?>) filter;
+                temp.setState(dataFilter.stateInt);
+            }
+            if (filter instanceof AnimeFilter.Sort) {
+                AnimeFilter.Sort temp = (AnimeFilter.Sort) filter;
+                JFilterList.JSortFilter dataSort = dataFilter.stateSort;
+                if (dataSort == null) {
+                    continue;
+                }
+                temp.setState(temp.getState().copy(dataSort.index, dataSort.ascending));
             }
         }
-        return new AnimeFilterList(filters);
+        return defaultFilters;
     }
 
     private void applyPreferences(DataBody data, long sourceId) {
@@ -399,14 +429,14 @@ public class DalvikHandler extends RouterNanoHTTPD.GeneralHandler {
                     editor.putString(pref.key, pref.listPreference.entryValues.get(pref.listPreference.valueIndex));
                 }
                 if (pref.multiSelectListPreference != null) {
-                    editor.putStringSet(pref.key, pref.multiSelectListPreference.values.stream().collect(Collectors.toSet()));
+                    editor.putStringSet(pref.key, new HashSet<>(pref.multiSelectListPreference.values));
                 }
                 if (pref.switchPreferenceCompat != null) {
                     editor.putBoolean(pref.key, pref.switchPreferenceCompat.value);
                 }
             }
             if (!editor.commit()) {
-                Log.d("DalvikHandler", "Unable to apply prefs for id: " + sourceId);
+                Log.e("DalvikHandler", "Unable to apply prefs for id: " + sourceId);
             }
         }
     }
@@ -420,7 +450,7 @@ public class DalvikHandler extends RouterNanoHTTPD.GeneralHandler {
                 CheckBoxPreference lp = (CheckBoxPreference) pref;
                 JCheckBoxPreference checkBox = new JCheckBoxPreference();
                 checkBox.title = Objects.requireNonNull(lp.getTitle()).toString();
-                checkBox.summary = Objects.requireNonNull(lp.getSummary()).toString();
+                checkBox.summary = lp.getSummary() != null ? lp.getSummary().toString() : "";
                 checkBox.value = lp.isChecked();
                 temp.checkBoxPreference = checkBox;
             }
@@ -428,9 +458,9 @@ public class DalvikHandler extends RouterNanoHTTPD.GeneralHandler {
                 EditTextPreference lp = (EditTextPreference) pref;
                 JEditTextPreference editText = new JEditTextPreference();
                 editText.title = Objects.requireNonNull(lp.getTitle()).toString();
-                editText.summary = Objects.requireNonNull(lp.getSummary()).toString();
-                editText.dialogTitle = Objects.requireNonNull(lp.getDialogTitle()).toString();
-                editText.dialogMessage = Objects.requireNonNull(lp.getDialogMessage()).toString();
+                editText.summary = lp.getSummary() != null ? lp.getSummary().toString() : "";
+                editText.dialogTitle = lp.getDialogTitle() != null ? lp.getDialogTitle().toString() : "";
+                editText.dialogMessage = lp.getDialogMessage() != null ? lp.getDialogMessage().toString() : "";
                 editText.text = lp.getText();
                 editText.value = lp.getText();
                 temp.editTextPreference = editText;
@@ -439,7 +469,7 @@ public class DalvikHandler extends RouterNanoHTTPD.GeneralHandler {
                 ListPreference lp = (ListPreference) pref;
                 JListPreference list = new JListPreference();
                 list.title = Objects.requireNonNull(lp.getTitle()).toString();
-                list.summary = Objects.requireNonNull(lp.getSummary()).toString();
+                list.summary = lp.getSummary() != null ? lp.getSummary().toString() : "";
                 list.valueIndex = Arrays.asList(lp.getEntryValues()).indexOf(lp.getValue());
                 list.entries = Arrays.stream(lp.getEntries()).map(CharSequence::toString).collect(Collectors.toList());
                 list.entryValues = Arrays.stream(lp.getEntryValues()).map(CharSequence::toString).collect(Collectors.toList());
@@ -449,7 +479,7 @@ public class DalvikHandler extends RouterNanoHTTPD.GeneralHandler {
                 MultiSelectListPreference lp = (MultiSelectListPreference) pref;
                 JMultiSelectListPreference multiList = new JMultiSelectListPreference();
                 multiList.title = Objects.requireNonNull(lp.getTitle()).toString();
-                multiList.summary = Objects.requireNonNull(lp.getSummary()).toString();
+                multiList.summary = lp.getSummary() != null ? lp.getSummary().toString() : "";
                 multiList.entries = Arrays.stream(lp.getEntries()).map(CharSequence::toString).collect(Collectors.toList());
                 multiList.entryValues = Arrays.stream(lp.getEntryValues()).map(CharSequence::toString).collect(Collectors.toList());
                 multiList.values = new ArrayList<>(lp.getValues());
@@ -459,7 +489,7 @@ public class DalvikHandler extends RouterNanoHTTPD.GeneralHandler {
                 SwitchPreference lp = (SwitchPreference) pref;
                 JSwitchPreference jswitch = new JSwitchPreference();
                 jswitch.title = Objects.requireNonNull(lp.getTitle()).toString();
-                jswitch.summary = Objects.requireNonNull(lp.getSummary()).toString();
+                jswitch.summary = lp.getSummary() != null ? lp.getSummary().toString() : "";
                 jswitch.value = lp.isChecked();
                 temp.switchPreferenceCompat = jswitch;
             }

@@ -173,11 +173,11 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             ApkBridgeTheme {
-                Scaffold(modifier = Modifier.fillMaxSize(), bottomBar = {
+                Scaffold(modifier = Modifier.fillMaxSize(), topBar = {
                     Text(
                         text = "Current version: v$currentVersion",
                         modifier = Modifier
-                            .padding(8.dp)
+                            .padding(24.dp)
                             .alpha(0.5f),
                         fontSize = 12.sp
                     )
