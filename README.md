@@ -1,6 +1,19 @@
-# ApkBridge
+<p align="center">
+ <img width=200px height=200px src="images/icon.webp"/>
+</p>
+
+<h1 align="center"> ApkBridge </h1>
+
+<div align="center">
+
+[![GitHub downloads](https://img.shields.io/github/downloads/Schnitzel5/ApkBridge/total?label=downloads&labelColor=27303D&color=0D1117&logo=github&logoColor=FFFFFF&style=flat)](https://github.com/kodjodevf/mangayomi/releases)
+![star](https://img.shields.io/github/stars/Schnitzel5/ApkBridge)
+[![Discord server](https://img.shields.io/discord/1157628512077893666.svg?label=&labelColor=6A7EC2&color=7389D8&logo=discord&logoColor=FFFFFF)](https://discord.com/invite/EjfBuYahsP)
+
+
 
 An Android Proxy Server for invoking APK stub functions.
+</div>
 
 ## Installing
 
