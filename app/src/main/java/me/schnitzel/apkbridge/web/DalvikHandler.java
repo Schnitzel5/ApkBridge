@@ -3,6 +3,7 @@ package me.schnitzel.apkbridge.web;
 import static fi.iki.elonen.NanoHTTPD.MIME_PLAINTEXT;
 import static fi.iki.elonen.NanoHTTPD.newFixedLengthResponse;
 
+import android.content.Context;
 import android.content.SharedPreferences;
 import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
@@ -22,6 +23,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Base64;
@@ -41,6 +43,8 @@ import eu.kanade.tachiyomi.animesource.AnimeSourceFactory;
 import eu.kanade.tachiyomi.animesource.ConfigurableAnimeSource;
 import eu.kanade.tachiyomi.animesource.model.AnimeFilter;
 import eu.kanade.tachiyomi.animesource.model.AnimeFilterList;
+import eu.kanade.tachiyomi.animesource.model.Track;
+import eu.kanade.tachiyomi.animesource.model.Video;
 import eu.kanade.tachiyomi.animesource.online.AnimeHttpSource;
 import eu.kanade.tachiyomi.source.CatalogueSource;
 import eu.kanade.tachiyomi.source.ConfigurableSource;
@@ -305,6 +309,7 @@ public class DalvikHandler extends RouterNanoHTTPD.GeneralHandler {
                 try {
                     applyPreferences(data, src.getId());
                     result = BuildersKt.runBlocking(EmptyCoroutineContext.INSTANCE, (scope, continuation) -> callback.apply(src, continuation));
+                    fixSubtitles(result);
                 } catch (InterruptedException e) {
                     throw new RuntimeException(e);
                 }
@@ -314,11 +319,44 @@ public class DalvikHandler extends RouterNanoHTTPD.GeneralHandler {
         return Optional.empty();
     }
 
-    protected DexClassLoader load(File file) throws IOException {
+    private void fixSubtitles(Object result) {
+        if (MainActivityKt.instance == null) return;
+        Context ctx = MainActivityKt.instance.getApplicationContext();
+        if (ctx == null) return;
+        if (result instanceof List<?>) {
+            for (Object obj : ((List<?>) result)) {
+                if (!(obj instanceof Video)) {
+                    continue;
+                }
+                Video video = (Video) obj;
+                List<Track> tracks = video.getSubtitleTracks().stream().map(track -> {
+                    if (!track.component1().startsWith("file:///")) {
+                        return track.copy(track.component1(), track.component2());
+                    }
+                    String[] paths = track.component1().split("/");
+                    File tempFile = new File(ctx.getCacheDir(), paths[paths.length - 1]);
+                    if (tempFile.exists()) {
+                        try {
+                            StringBuilder builder = new StringBuilder();
+                            Files.readAllLines(tempFile.toPath()).forEach(s -> builder.append(s).append("\n"));
+                            return track.copy(builder.toString(), track.component2());
+                        } catch (IOException e) {
+                            return null;
+                        }
+                    }
+                    return null;
+                }).filter(Objects::nonNull).collect(Collectors.toList());
+                video.getSubtitleTracks().clear();
+                video.getSubtitleTracks().addAll(tracks);
+            }
+        }
+    }
+
+    private DexClassLoader load(File file) throws IOException {
         return new DexClassLoader(file.getAbsolutePath(), null, null, this.getClass().getClassLoader());
     }
 
-    protected FilterList convertFilterListManga(FilterList defaultFilters, List<JFilterList> data) {
+    private FilterList convertFilterListManga(FilterList defaultFilters, List<JFilterList> data) {
         for (Filter<?> filter : defaultFilters.getList()) {
             JFilterList dataFilter = data.stream().filter(e -> filter.getName().equalsIgnoreCase(e.name)).findFirst().orElse(null);
             if (dataFilter == null) {
@@ -366,7 +404,7 @@ public class DalvikHandler extends RouterNanoHTTPD.GeneralHandler {
         return defaultFilters;
     }
 
-    protected AnimeFilterList convertFilterListAnime(AnimeFilterList defaultFilters, List<JFilterList> data) {
+    private AnimeFilterList convertFilterListAnime(AnimeFilterList defaultFilters, List<JFilterList> data) {
         for (AnimeFilter<?> filter : defaultFilters.getList()) {
             JFilterList dataFilter = data.stream().filter(e -> filter.getName().equalsIgnoreCase(e.name)).findFirst().orElse(null);
             if (dataFilter == null) {
