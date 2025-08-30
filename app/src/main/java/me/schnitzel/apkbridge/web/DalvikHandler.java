@@ -58,6 +58,7 @@ import fi.iki.elonen.router.RouterNanoHTTPD;
 import kotlin.coroutines.Continuation;
 import kotlin.coroutines.EmptyCoroutineContext;
 import kotlinx.coroutines.BuildersKt;
+import me.schnitzel.apkbridge.LogLevel;
 import me.schnitzel.apkbridge.MainActivity;
 import me.schnitzel.apkbridge.MainActivityKt;
 import keiyoushi.utils.PreferencesKt;
@@ -68,6 +69,7 @@ import me.schnitzel.apkbridge.web.preference.JListPreference;
 import me.schnitzel.apkbridge.web.preference.JMultiSelectListPreference;
 import me.schnitzel.apkbridge.web.preference.JPreference;
 import me.schnitzel.apkbridge.web.preference.JSwitchPreference;
+import rx.android.BuildConfig;
 
 public class DalvikHandler extends RouterNanoHTTPD.GeneralHandler {
     private static final String ANIME_PACKAGE = "tachiyomi.animeextension";
@@ -88,7 +90,9 @@ public class DalvikHandler extends RouterNanoHTTPD.GeneralHandler {
                 final Map<String, String> body = new HashMap<>();
                 ObjectMapper mapper = new ObjectMapper();
                 session.parseBody(body);
-                body.forEach((k, v) -> System.out.println(k + " - " + v));
+                if (BuildConfig.DEBUG) {
+                    body.forEach((k, v) -> System.out.println(k + " - " + v));
+                }
                 String postData = body.get("postData");
                 DataBody data = mapper.readValue(postData, DataBody.class);
                 file = File.createTempFile("ext", ".apk");
@@ -105,6 +109,7 @@ public class DalvikHandler extends RouterNanoHTTPD.GeneralHandler {
                 }
             } catch (IOException | NanoHTTPD.ResponseException | InterruptedException e) {
                 System.err.println(e.getMessage());
+                MainActivityKt.log(e.getMessage(), LogLevel.ERROR);
                 return newFixedLengthResponse(NanoHTTPD.Response.Status.INTERNAL_ERROR, MIME_PLAINTEXT, "");
             } finally {
                 if (file != null && file.exists()) {
@@ -223,6 +228,7 @@ public class DalvikHandler extends RouterNanoHTTPD.GeneralHandler {
                 return newFixedLengthResponse(NanoHTTPD.Response.Status.OK, "application/json", mapper.writeValueAsString(obj));
             } catch (IOException e) {
                 System.err.println(e.getMessage());
+                MainActivityKt.log(e.getMessage(), LogLevel.ERROR);
                 return newFixedLengthResponse(NanoHTTPD.Response.Status.INTERNAL_ERROR, MIME_PLAINTEXT, "");
             }
         }).orElse(newFixedLengthResponse(NanoHTTPD.Response.Status.BAD_REQUEST, MIME_PLAINTEXT, ""));
@@ -235,6 +241,7 @@ public class DalvikHandler extends RouterNanoHTTPD.GeneralHandler {
         PackageInfo info = pm.getPackageArchiveInfo(file.getAbsolutePath(), PackageManager.GET_CONFIGURATIONS | PackageManager.GET_META_DATA);
         if (info != null && info.applicationInfo != null) {
             System.out.println(info.applicationInfo.metaData.toString());
+            MainActivityKt.log(info.applicationInfo.metaData.toString());
             String metaSourceClass = info.applicationInfo.metaData.getString(MANGA_PACKAGE + XX_METADATA_SOURCE_CLASS);
             if (metaSourceClass == null) {
                 return Optional.empty();
@@ -257,6 +264,7 @@ public class DalvikHandler extends RouterNanoHTTPD.GeneralHandler {
                     }
                 } catch (Exception e) {
                     System.err.println("Error loading " + sourceClass + ": " + e.getMessage());
+                    MainActivityKt.log("Error loading " + sourceClass + ": " + e.getMessage(), LogLevel.ERROR);
                 }
                 return null;
             }).filter(sources -> !sources.isEmpty()).map(sources -> (CatalogueSource) sources.get(0)).map(src -> {
@@ -302,6 +310,7 @@ public class DalvikHandler extends RouterNanoHTTPD.GeneralHandler {
                     }
                 } catch (Exception e) {
                     System.err.println("Error loading " + sourceClass + ": " + e.getMessage());
+                    MainActivityKt.log("Error loading " + sourceClass + ": " + e.getMessage(), LogLevel.ERROR);
                 }
                 return null;
             }).filter(sources -> !sources.isEmpty()).map(sources -> (AnimeCatalogueSource) sources.get(0)).map(src -> {
@@ -325,29 +334,33 @@ public class DalvikHandler extends RouterNanoHTTPD.GeneralHandler {
         if (ctx == null) return;
         if (result instanceof List<?>) {
             for (Object obj : ((List<?>) result)) {
-                if (!(obj instanceof Video)) {
-                    continue;
-                }
-                Video video = (Video) obj;
-                List<Track> tracks = video.getSubtitleTracks().stream().map(track -> {
-                    if (!track.component1().startsWith("file:///")) {
-                        return track.copy(track.component1(), track.component2());
+                try {
+                    if (!(obj instanceof Video)) {
+                        continue;
                     }
-                    String[] paths = track.component1().split("/");
-                    File tempFile = new File(ctx.getCacheDir(), paths[paths.length - 1]);
-                    if (tempFile.exists()) {
-                        try {
-                            StringBuilder builder = new StringBuilder();
-                            Files.readAllLines(tempFile.toPath()).forEach(s -> builder.append(s).append("\n"));
-                            return track.copy(builder.toString(), track.component2());
-                        } catch (IOException e) {
-                            return null;
+                    Video video = (Video) obj;
+                    List<Track> tracks = video.getSubtitleTracks().stream().map(track -> {
+                        if (!track.component1().startsWith("file:///")) {
+                            return track.copy(track.component1(), track.component2());
                         }
-                    }
-                    return null;
-                }).filter(Objects::nonNull).collect(Collectors.toList());
-                video.getSubtitleTracks().clear();
-                video.getSubtitleTracks().addAll(tracks);
+                        String[] paths = track.component1().split("/");
+                        File tempFile = new File(ctx.getCacheDir(), paths[paths.length - 1]);
+                        if (tempFile.exists()) {
+                            try {
+                                StringBuilder builder = new StringBuilder();
+                                Files.readAllLines(tempFile.toPath()).forEach(s -> builder.append(s).append("\n"));
+                                return track.copy(builder.toString(), track.component2());
+                            } catch (IOException e) {
+                                return null;
+                            }
+                        }
+                        return null;
+                    }).filter(Objects::nonNull).collect(Collectors.toList());
+                    video.getSubtitleTracks().clear();
+                    video.getSubtitleTracks().addAll(tracks);
+                } catch (UnsupportedOperationException exception) {
+                    MainActivityKt.log("Empty subtitle tracks", LogLevel.WARNING);
+                }
             }
         }
     }
